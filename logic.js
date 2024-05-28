@@ -8,7 +8,7 @@ let generatedNumbers = []; // Array to hold the random info from the game
 let timeData = []; // Array to hold timing 
 let currentDigitLength = 2;  // Start with 2 digits
 let correctCount = 0;        // Counter for consecutive correct answers
-const maxDigitLength = 7;    // Prevent going beyond 7 digits for complexity management
+let authInstance;
 
 document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('startButton').addEventListener('click', function () {
@@ -47,15 +47,6 @@ function startGame() {
     }
 }
 
-document.getElementById('saveButton').addEventListener('click', function () {
-    var inputCode = document.getElementById('digitInput').value; // Get the value from the input field
-    window.savedCode = inputCode; // Store the input value for later use (e.g., in a global variable)
-    gameData.unshift(window.savedCode); // Add the subject code at the beggining of the list 
-    generatedNumbers.unshift(window.savedCode); // Add the subject code at the beggining of the list 
-    timeData.unshift(window.savedCode); // Add the subject code at the beggining of the list 
-    console.log("Saved code:", window.savedCode); // Optionally, log the saved code to the console or do other actions
-});
-
 function keyPressed(key) {
     const displayArea = document.getElementById('displayArea');
     displayArea.textContent += key;
@@ -70,33 +61,6 @@ function deleteLast() {
     displayArea.textContent = displayArea.textContent.slice(0, -1);
 }
 
-// function enterPressed() {
-//     const endTime = performance.now();
-//     const elapsedTime = endTime - startTime;
-//     const displayArea = document.getElementById('displayArea');
-//     const enteredSequence = displayArea.textContent;
-//     const messageArea = document.getElementById('messageArea');
-//     const result = enteredSequence === generatedSequence ? 'Correct' : 'Incorrect';
-
-//     gameData.push(enteredSequence);
-//     generatedNumbers.push(generatedSequence);
-//     timeData.push(elapsedTime);
-
-//     messageArea.textContent = result;
-//     displayArea.textContent = '';
-//     currentRound++;
-
-//     logRoundData(playerInputDigits, generatedSequence, enteredSequence, elapsedTime);
-
-//     if (currentRound < maxRounds) {
-//         setTimeout(function () {
-//             messageArea.textContent = '';
-//             startGame();
-//         }, 2000);
-//     } else {
-//         endGame();
-//     }
-// }
 function enterPressed() {
     const endTime = performance.now();
     const elapsedTime = endTime - startTime;
@@ -111,7 +75,7 @@ function enterPressed() {
 
     if (result === 'Correct') {
         correctCount++;
-        if (correctCount % 2 === 0 && currentDigitLength < maxDigitLength) {
+        if (correctCount % 2 === 0) {
             currentDigitLength++;  // Increase the digit length after every 2 consecutive correct answers
         }
     } else {
@@ -149,55 +113,43 @@ function endGame() {
     console.log('Typed Answers:', gameData);
     console.log('Generated Digits:', generatedNumbers);
     console.log('Response Times:', timeData);
+
+    // Generate and upload CSV file to Google Drive
+    const filename = `${playerInputDigits}_gameData.csv`; // Create a filename using playerInputDigits
+    generateCSVFileAndUpload(gameData, generatedNumbers, timeData, filename);
 }
 
-function generateCSVContent() {
+function generateCSVFileAndUpload(gameData, generatedNumbers, timeData, filename) {
     let csvContent = "Subject's Code,Generated Digit,Typed Answer,Response Time (ms)\n";
-    gameData.forEach((round) => {
-        csvContent += `${round.inputDigits},${round.generatedDigits},${round.subjectResponse},${round.responseTime}\n`;
-    });
-    return csvContent;
-}
 
-function sendGameData() {
-    const csvContent = generateCSVContent(); // Generate the CSV string from game data
-    const gameDataToSend = { csv: csvContent }; // Prepare the data object to send
-    // make sure to change URL
-    fetch('https://yourserver.com/saveGameData', { // Make sure to replace this URL with your actual server URL
-        // make sure to change URL
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(gameDataToSend),
-    })
-        .then(response => response.json())
-        .then(data => console.log('Success:', data))
-        .catch((error) => console.error('Error:', error));
-}
-
-function arraysToCSV(array1, array2, filename = 'data.csv') {
-    if (array1.length !== array2.length) {
-        throw new Error('Both arrays must be of the same length');
+    for (let i = 0; i < gameData.length; i++) {
+        csvContent += `${playerInputDigits},${generatedNumbers[i]},${gameData[i]},${timeData[i]}\n`;
     }
 
-    // Prepare CSV data
-    let csvContent = 'Column1,Column2\n'; // Column headers
-    for (let i = 0; i < array1.length; i++) {
-        csvContent += `"${array1[i].toString().replace(/"/g, '""')}","${array2[i].toString().replace(/"/g, '""')}"\n`;
-    }
-
-    // Create a Blob with the CSV data
+    // Convert CSV content to Blob
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
 
-    // Create a link to download the blob
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    link.style.visibility = 'hidden';
+    // Upload Blob to Google Drive
+    uploadFileToDrive(blob, filename);
+}
 
-    // Append link to the body, click it, and remove it
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+function uploadFileToDrive(blob, filename) {
+    const fileMetadata = {
+        'name': filename,
+        'mimeType': 'text/csv'
+    };
+    const media = {
+        mimeType: 'text/csv',
+        body: blob
+    };
+
+    gapi.client.drive.files.create({
+        resource: fileMetadata,
+        media: media,
+        fields: 'id'
+    }).then(function (response) {
+        console.log('File ID:', response.result.id);
+    }).catch(function (error) {
+        console.error('Error uploading file:', error);
+    });
 }
